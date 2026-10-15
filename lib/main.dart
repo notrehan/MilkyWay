@@ -1,10 +1,16 @@
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'auth_screen.dart';
+import 'data/profile_repository.dart';
+import 'data/alien_repository.dart';
+import 'data/planet_repository.dart';
+import 'models/alien_profile.dart';
 import 'models/human_profile.dart';
+import 'models/planet.dart';
 import 'screens/profile_screen.dart';
 
 Future<void> main() async {
@@ -92,133 +98,6 @@ class AuthGate extends StatelessWidget {
 
 // ─── PLANET MODEL & SAMPLE DATA ───────────────────────────────────
 
-class Planet {
-  final String id;
-  final String name;
-  final String classification;
-  final String image;
-  final String description;
-  final String climate;
-  final String atmosphere;
-  final double gravity;
-  final double habitability;
-  final List<String> pros;
-  final List<String> cons;
-
-  const Planet({
-    required this.id,
-    required this.name,
-    required this.classification,
-    required this.image,
-    required this.description,
-    required this.climate,
-    required this.atmosphere,
-    required this.gravity,
-    required this.habitability,
-    required this.pros,
-    required this.cons,
-  });
-}
-
-const planets = <Planet>[
-  Planet(
-    id: 'solara',
-    name: 'Solara-9',
-    classification: 'CLASS M · ETERNAL SUMMER',
-    image:
-        'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1000&q=85',
-    description:
-        'Endless beaches, warm oceans and golden sunsets. '
-        'Winter has officially been cancelled.',
-    climate: 'Tropical',
-    atmosphere: 'Breathable',
-    gravity: 1.0,
-    habitability: 96,
-    pros: ['Perfect beaches', 'Liquid water', 'Sunny forever'],
-    cons: ['Sunscreen costs a fortune', 'Three suns, no shade'],
-  ),
-  Planet(
-    id: 'frostheim',
-    name: 'Frostheim',
-    classification: 'CLASS F · ETERNAL WINTER',
-    image:
-        'https://images.unsplash.com/photo-1517299321609-52687d1bc55a?auto=format&fit=crop&w=1000&q=85',
-    description:
-        'Frozen oceans, enormous glaciers and auroras every night. '
-        'The locals call 2°C beach weather.',
-    climate: 'Sub-zero',
-    atmosphere: 'Breathable',
-    gravity: 0.95,
-    habitability: 81,
-    pros: ['Beautiful auroras', 'No mosquitoes', 'Ice everywhere'],
-    cons: ['Summer lasts eleven minutes', 'Heating is expensive'],
-  ),
-  Planet(
-    id: 'verdantis',
-    name: 'Verdantis',
-    classification: 'CLASS M · OVERGROWN PARADISE',
-    image:
-        'https://images.unsplash.com/photo-1472396961693-142e6e269027?auto=format&fit=crop&w=1000&q=85',
-    description:
-        'Lush forests, freshwater rivers and extraordinary wildlife. '
-        'Some plants may be smarter than you.',
-    climate: 'Temperate',
-    atmosphere: 'Breathable',
-    gravity: 1.05,
-    habitability: 91,
-    pros: ['Freshwater everywhere', 'Great biodiversity'],
-    cons: ['Plants may be watching', 'Aggressive local wildlife'],
-  ),
-  Planet(
-    id: 'karnak',
-    name: 'Karnak Prime',
-    classification: 'CLASS K · RICH IN RESOURCES',
-    image:
-        'https://images.unsplash.com/photo-1462331940025-496dfbfc7564?auto=format&fit=crop&w=1000&q=85',
-    description:
-        'Spectacular mineral deposits and magnificent cities. '
-        'Unfortunately, humans are considered a local delicacy.',
-    climate: 'Hot and dry',
-    atmosphere: 'Breathable',
-    gravity: 1.15,
-    habitability: 72,
-    pros: ['Excellent resources', 'Beautiful architecture'],
-    cons: ['Humans are on the menu', 'Tourism insurance is expensive'],
-  ),
-  Planet(
-    id: 'aqua',
-    name: 'Aqua Nova',
-    classification: 'CLASS O · OCEAN WORLD',
-    image:
-        'https://images.unsplash.com/photo-1518837695005-2083093ee35b?auto=format&fit=crop&w=1000&q=85',
-    description:
-        'A planet-wide ocean with floating cities and crystal-clear '
-        'water. Bring a boat. And possibly gills.',
-    climate: 'Warm and humid',
-    atmosphere: 'Low oxygen',
-    gravity: 0.9,
-    habitability: 58,
-    pros: ['Endless oceans', 'Amazing marine life'],
-    cons: ['Almost no dry land', 'Oxygen support required'],
-  ),
-  Planet(
-    id: 'ember',
-    name: 'Ember-6',
-    classification: 'CLASS X · EXTREME ENVIRONMENT',
-    image:
-        'https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=1000&q=85',
-    description:
-        'Volcanic landscapes and spectacular glowing skies. '
-        'The real estate is cheap for a reason.',
-    climate: 'Extreme heat',
-    atmosphere: 'Toxic',
-    gravity: 1.2,
-    habitability: 19,
-    pros: ['Rare minerals', 'Incredible views'],
-    cons: ['Toxic air', 'Volcanoes are everywhere'],
-  ),
-];
-
 // ─── MAIN NAVIGATION ─────────────────────────────────────────────
 
 class MainShell extends StatefulWidget {
@@ -231,6 +110,35 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int index = 0;
   HumanProfile? humanProfile;
+  bool _loadingProfile = true;
+  late final ProfileRepository _profiles;
+
+  @override
+  void initState() {
+    super.initState();
+    _profiles = ProfileRepository(Supabase.instance.client);
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final profile = await _profiles.loadMyProfile();
+      if (mounted) setState(() => humanProfile = profile);
+    } catch (error) {
+      debugPrint('Could not load profile: $error');
+    } finally {
+      if (mounted) setState(() => _loadingProfile = false);
+    }
+  }
+
+  Future<void> _saveProfile(HumanProfile profile, XFile? newPhoto) async {
+    final saved = await _profiles.saveMyProfile(profile, newPhoto: newPhoto);
+    if (!mounted) return;
+    setState(() {
+      humanProfile = saved;
+      index = 2;
+    });
+  }
 
   void openProfile() {
     setState(() => index = 3);
@@ -238,6 +146,11 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingProfile) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
     return Scaffold(
       body: IndexedStack(
         index: index,
@@ -253,12 +166,7 @@ class _MainShellState extends State<MainShell> {
           ProfileScreen(
             key: ValueKey(humanProfile?.name ?? 'new-profile'),
             initialProfile: humanProfile,
-            onComplete: (profile) {
-              setState(() {
-                humanProfile = profile;
-                index = 2;
-              });
-            },
+            onComplete: _saveProfile,
           ),
         ],
       ),
@@ -307,76 +215,75 @@ class HomeScreen extends StatelessWidget {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 28),
         children: [
-          Row(
-            children: [
-              Container(
-                width: 42,
-                height: 42,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
+          SizedBox(
+            height: 76,
+            width: double.infinity,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'MILKYWAY',
+                      style: TextStyle(
+                        color: ink,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 3.5,
+                        fontSize: 21,
+                      ),
+                    ),
+                    SizedBox(height: 5),
+                    Text(
+                      'INTERGALACTIC DATING',
+                      style: TextStyle(
+                        color: muted,
+                        fontSize: 10,
+                        letterSpacing: 1.8,
+                      ),
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.rocket_launch, color: accent),
-              ),
-              const SizedBox(width: 12),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'MILKYWAY',
-                    style: TextStyle(
-                      color: ink,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      fontSize: 16,
-                    ),
+                Positioned(
+                  right: 0,
+                  child: IconButton(
+                    tooltip: 'Log out',
+                    onPressed: () async {
+                      try {
+                        await Supabase.instance.client.auth.signOut();
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not log out. Try again.'),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.logout_rounded, color: muted),
                   ),
-                  Text(
-                    'INTERGALACTIC DATING',
-                    style: TextStyle(
-                      color: muted,
-                      fontSize: 9,
-                      letterSpacing: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: 'Log out',
-                onPressed: () async {
-                  try {
-                    await Supabase.instance.client.auth.signOut();
-                  } catch (_) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Could not log out. Try again.')),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.logout_rounded, color: muted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 42),
-          const Text(
-            'YOUR UNIVERSE.\nYOUR RULES.',
-            style: TextStyle(
-              color: ink,
-              fontSize: 36,
-              height: 1.12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1.2,
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 14),
-          const Text(
-            'Earth is old news. Your next great match '
-            'is somewhere out there.',
-            style: TextStyle(color: muted, fontSize: 15, height: 1.6),
-          ),
           const SizedBox(height: 30),
+          const Text(
+            'Somewhere out there,\nsomeone gets you.',
+            style: TextStyle(
+              color: ink,
+              fontSize: 29,
+              height: 1.2,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.7,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Your next connection is written in the stars.',
+            style: TextStyle(color: muted, fontSize: 15, height: 1.5),
+          ),
+          const SizedBox(height: 26),
           FeatureCard(
             title: 'Find your new home',
             subtitle: 'Planets worth relocating for.',
@@ -402,47 +309,6 @@ class HomeScreen extends StatelessWidget {
             icon: Icons.person_outline,
             colors: const [Color(0xFFF0E8DB), Color(0xFFE7DDCD)],
             onTap: () => onNavigate(3),
-          ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: panel,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: border),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.auto_awesome_outlined, color: accent, size: 25),
-                SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'LOVE IN A NEW GALAXY',
-                        style: TextStyle(
-                          color: accent,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      SizedBox(height: 7),
-                      Text(
-                        'Compatibility is recommended. '
-                        'Interplanetary marriage is complicated.',
-                        style: TextStyle(
-                          color: muted,
-                          fontSize: 13,
-                          height: 1.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -641,6 +507,10 @@ class _PlanetScreenState extends State<PlanetScreen>
     with SingleTickerProviderStateMixin {
   int tab = 0;
   int currentIndex = 0;
+  bool _loading = true;
+  String? _error;
+  List<Planet> _planets = [];
+  late final PlanetRepository _repository;
 
   Offset dragOffset = Offset.zero;
   bool isAnimatingOut = false;
@@ -653,11 +523,13 @@ class _PlanetScreenState extends State<PlanetScreen>
   final Set<String> passed = {};
 
   List<Planet> get matches =>
-      planets.where((p) => liked.contains(p.id)).toList();
+      _planets.where((p) => liked.contains(p.id)).toList();
 
   @override
   void initState() {
     super.initState();
+    _repository = PlanetRepository(Supabase.instance.client);
+    _loadPlanets();
 
     _controller = AnimationController(
       vsync: this,
@@ -682,6 +554,31 @@ class _PlanetScreenState extends State<PlanetScreen>
     });
   }
 
+  Future<void> _loadPlanets() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final loaded = await _repository.loadPlanets();
+      if (!mounted) return;
+      setState(() {
+        _planets = loaded;
+        currentIndex = 0;
+        dragOffset = Offset.zero;
+        _loading = false;
+      });
+    } catch (error) {
+      debugPrint('Could not load planets: $error');
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load planets. Check your connection and Supabase policies.';
+        _loading = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -689,7 +586,7 @@ class _PlanetScreenState extends State<PlanetScreen>
   }
 
   void _animateTo(Offset destination, {required bool dismiss}) {
-    if (isAnimatingOut || currentIndex >= planets.length) return;
+    if (isAnimatingOut || currentIndex >= _planets.length) return;
 
     _controller.stop();
     _controller.reset();
@@ -711,9 +608,9 @@ class _PlanetScreenState extends State<PlanetScreen>
   }
 
   void _finishSwipe() {
-    if (!mounted || currentIndex >= planets.length) return;
+    if (!mounted || currentIndex >= _planets.length) return;
 
-    final planet = planets[currentIndex];
+    final planet = _planets[currentIndex];
     final wasLiked = dragOffset.dx > 0;
 
     setState(() {
@@ -742,7 +639,7 @@ class _PlanetScreenState extends State<PlanetScreen>
 
   void _swipe(bool like) {
     if (isAnimatingOut || isReturning ||
-        currentIndex >= planets.length) {
+        currentIndex >= _planets.length) {
       return;
     }
 
@@ -879,12 +776,12 @@ class _PlanetScreenState extends State<PlanetScreen>
 
   @override
   Widget build(BuildContext context) {
-    final current = currentIndex < planets.length
-        ? planets[currentIndex]
+    final current = currentIndex < _planets.length
+        ? _planets[currentIndex]
         : null;
 
-    final next = currentIndex + 1 < planets.length
-        ? planets[currentIndex + 1]
+    final next = currentIndex + 1 < _planets.length
+        ? _planets[currentIndex + 1]
         : null;
 
     final rotation = (dragOffset.dx /
@@ -893,6 +790,28 @@ class _PlanetScreenState extends State<PlanetScreen>
 
     final opacity =
         (dragOffset.dx.abs() / 100).clamp(0.0, 1.0);
+
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined, size: 44, color: muted),
+              const SizedBox(height: 12),
+              Text(_error!, textAlign: TextAlign.center,
+                  style: const TextStyle(color: muted)),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: _loadPlanets, child: const Text('Try again')),
+            ],
+          ),
+        ),
+      );
+    }
 
     return SafeArea(
       child: Column(
@@ -1082,10 +1001,23 @@ class PlanetCard extends StatelessWidget {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  Image.network(
-                    planet.image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
+                  if (planet.image.isNotEmpty)
+                    Image.network(
+                      planet.image,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const ColoredBox(
+                        color: Color(0xFF252525),
+                        child: Center(
+                          child: Icon(
+                            Icons.public,
+                            size: 120,
+                            color: Colors.white24,
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    const ColoredBox(
                       color: Color(0xFF252525),
                       child: Center(
                         child: Icon(
@@ -1095,7 +1027,6 @@ class PlanetCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ),
                   Positioned(
                     top: 16,
                     left: 16,
@@ -1420,7 +1351,7 @@ class FinishedView extends StatelessWidget {
   }
 }
 
-// ─── ALIENS SCREEN: PROFILE REQUIRED ─────────────────────────────
+// ─── ALIENS SCREEN: SUPABASE DISCOVERY + SWIPING ──────────────────
 
 class AlienScreen extends StatefulWidget {
   final HumanProfile? profile;
@@ -1438,11 +1369,111 @@ class AlienScreen extends StatefulWidget {
 
 class _AlienScreenState extends State<AlienScreen> {
   int tab = 0;
+  bool _loading = true;
+  String? _error;
+  List<AlienProfile> _aliens = [];
+  int _currentIndex = 0;
+  Offset _dragOffset = Offset.zero;
+  final Set<String> _likedIds = {};
+  final Set<String> _passedIds = {};
+  late final AlienRepository _repository;
+
+  List<AlienProfile> get _likedAliens =>
+      _aliens.where((alien) => _likedIds.contains(alien.id)).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    _repository = AlienRepository(Supabase.instance.client);
+    _loadAliens();
+  }
+
+  @override
+  void didUpdateWidget(covariant AlienScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile == null && widget.profile != null) {
+      _loadAliens();
+    }
+  }
+
+  Future<void> _loadAliens() async {
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final aliens = await _repository.loadAliens();
+      if (!mounted) return;
+      setState(() {
+        _aliens = aliens;
+        _currentIndex = 0;
+        _dragOffset = Offset.zero;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load alien profiles. Check your connection and Supabase policies.';
+        _loading = false;
+      });
+      debugPrint('Could not load alien profiles: $error');
+    }
+  }
+
+  void _swipe(bool like) {
+    if (_currentIndex >= _aliens.length) return;
+    final alien = _aliens[_currentIndex];
+    setState(() {
+      if (like) {
+        _likedIds.add(alien.id);
+        _passedIds.remove(alien.id);
+      } else {
+        _passedIds.add(alien.id);
+        _likedIds.remove(alien.id);
+      }
+      _currentIndex++;
+      _dragOffset = Offset.zero;
+    });
+    if (like && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('You liked ${alien.name}!'),
+          duration: const Duration(milliseconds: 900),
+        ),
+      );
+    }
+  }
+
+  void _onPanUpdate(DragUpdateDetails details) {
+    setState(() => _dragOffset += details.delta);
+  }
+
+  void _onPanEnd(DragEndDetails details) {
+    final width = MediaQuery.sizeOf(context).width;
+    final velocity = details.velocity.pixelsPerSecond.dx;
+    if (_dragOffset.dx > width * 0.22 || velocity > 800) {
+      _swipe(true);
+    } else if (_dragOffset.dx < -width * 0.22 || velocity < -800) {
+      _swipe(false);
+    } else {
+      setState(() => _dragOffset = Offset.zero);
+    }
+  }
+
+  void _resetDiscovery() {
+    setState(() {
+      _currentIndex = 0;
+      _dragOffset = Offset.zero;
+      _likedIds.clear();
+      _passedIds.clear();
+      tab = 0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final hasProfile = widget.profile != null;
-
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1479,7 +1510,13 @@ class _AlienScreenState extends State<AlienScreen> {
           Expanded(
             child: !hasProfile
                 ? _buildProfilePrompt()
-                : _buildAlienContent(),
+                : _loading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _error != null
+                        ? _buildError()
+                        : tab == 1
+                            ? _buildLikedList()
+                            : _buildDiscovery(),
           ),
         ],
       ),
@@ -1500,33 +1537,19 @@ class _AlienScreenState extends State<AlienScreen> {
                 color: const Color(0xFFEAE6F0),
                 borderRadius: BorderRadius.circular(30),
               ),
-              child: const Icon(
-                Icons.face_6_outlined,
-                color: accent,
-                size: 52,
-              ),
+              child: const Icon(Icons.face_6_outlined, color: accent, size: 52),
             ),
             const SizedBox(height: 24),
             const Text(
               'First, introduce yourself.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: ink,
-                fontSize: 24,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(color: ink, fontSize: 24, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
             const Text(
-              'Create your human profile and tell us what you '
-              'need to survive on another planet before meeting '
-              'the local dating population.',
+              'Create your human profile and tell us what you need to survive on another planet before meeting the local dating population.',
               textAlign: TextAlign.center,
-              style: TextStyle(
-                color: muted,
-                fontSize: 14,
-                height: 1.6,
-              ),
+              style: TextStyle(color: muted, fontSize: 14, height: 1.6),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -1539,9 +1562,7 @@ class _AlienScreenState extends State<AlienScreen> {
                 style: FilledButton.styleFrom(
                   backgroundColor: ink,
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
               ),
             ),
@@ -1551,58 +1572,273 @@ class _AlienScreenState extends State<AlienScreen> {
     );
   }
 
-  Widget _buildAlienContent() {
+  Widget _buildError() {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              tab == 0
-                  ? Icons.travel_explore
-                  : Icons.favorite_border,
-              color: accent,
-              size: 60,
-            ),
+            const Icon(Icons.cloud_off_outlined, color: accent, size: 54),
+            const SizedBox(height: 14),
+            Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: muted, height: 1.5)),
             const SizedBox(height: 18),
-            Text(
-              tab == 0
-                  ? 'Your cosmic crush awaits.'
-                  : 'Your matches will appear here.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: ink,
-                fontSize: 22,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              tab == 0
-                  ? 'Welcome, ${widget.profile!.name}. '
-                      'Alien profiles and compatibility matching '
-                      'are the next step.'
-                  : 'When you like an alien and they like you back, '
-                      'your match will appear here.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: muted,
-                height: 1.5,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(height: 20),
-            OutlinedButton.icon(
-              onPressed: widget.onCreateProfile,
-              icon: const Icon(Icons.edit_outlined),
-              label: const Text('Edit my profile'),
-            ),
+            FilledButton.icon(onPressed: _loadAliens, icon: const Icon(Icons.refresh), label: const Text('Try again')),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildDiscovery() {
+    if (_aliens.isEmpty) {
+      return _alienEmptyState(
+        title: 'No alien profiles yet',
+        subtitle: 'Add a couple of alien profiles in Supabase to start testing discovery.',
+        buttonLabel: 'Refresh profiles',
+        onPressed: _loadAliens,
+      );
+    }
+    if (_currentIndex >= _aliens.length) {
+      return _alienEmptyState(
+        title: 'You explored the galaxy.',
+        subtitle: 'You have seen every alien profile available right now.',
+        buttonLabel: 'Explore again',
+        onPressed: _resetDiscovery,
+      );
+    }
+
+    final alien = _aliens[_currentIndex];
+    final next = _currentIndex + 1 < _aliens.length ? _aliens[_currentIndex + 1] : null;
+    final rotation = (_dragOffset.dx / (MediaQuery.sizeOf(context).width * 1.5)).clamp(-0.18, 0.18);
+    final stampOpacity = (_dragOffset.dx.abs() / 90).clamp(0.0, 1.0);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+      child: Column(
+        children: [
+          Expanded(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                if (next != null)
+                  Positioned.fill(
+                    child: Transform.scale(
+                      scale: 0.95,
+                      child: _AlienCard(alien: next),
+                    ),
+                  ),
+                Positioned.fill(
+                  child: GestureDetector(
+                    onPanUpdate: _onPanUpdate,
+                    onPanEnd: _onPanEnd,
+                    child: Transform.translate(
+                      offset: _dragOffset,
+                      child: Transform.rotate(
+                        angle: rotation,
+                        child: _AlienCard(alien: alien),
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 24,
+                  left: 20,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: _dragOffset.dx > 0 ? stampOpacity : 0,
+                      child: const _SwipeStamp(label: 'LIKE', color: Color(0xFF548A70)),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 24,
+                  right: 20,
+                  child: IgnorePointer(
+                    child: Opacity(
+                      opacity: _dragOffset.dx < 0 ? stampOpacity : 0,
+                      child: const _SwipeStamp(label: 'NOPE', color: Color(0xFFC45F65)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ActionButton(icon: Icons.close, color: const Color(0xFFC45F65), onTap: () => _swipe(false)),
+              ActionButton(icon: Icons.refresh, color: ink, onTap: _resetDiscovery),
+              ActionButton(icon: Icons.favorite, color: const Color(0xFF548A70), onTap: () => _swipe(true)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLikedList() {
+    final liked = _likedAliens;
+    if (liked.isEmpty) {
+      return const EmptyState(
+        icon: Icons.favorite_border,
+        title: 'No aliens liked yet',
+        subtitle: 'Swipe right on an alien to add them to this list.',
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(20),
+      itemCount: liked.length,
+      itemBuilder: (context, index) {
+        final alien = liked[index];
+        return Card(
+          color: Colors.white,
+          margin: const EdgeInsets.only(bottom: 12),
+          elevation: 0,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18), side: const BorderSide(color: border)),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(10),
+            leading: _AlienAvatar(alien: alien, width: 64, height: 64),
+            title: Text(alien.age == null ? alien.name : '${alien.name}, ${alien.age}', style: const TextStyle(color: ink, fontWeight: FontWeight.bold)),
+            subtitle: Text([alien.species, alien.homePlanet].whereType<String>().where((s) => s.isNotEmpty).join(' · '), style: const TextStyle(color: muted)),
+            trailing: const Icon(Icons.favorite, color: Color(0xFF548A70)),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _alienEmptyState({
+    required String title,
+    required String subtitle,
+    required String buttonLabel,
+    required VoidCallback onPressed,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.travel_explore, color: accent, size: 56),
+            const SizedBox(height: 16),
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(color: ink, fontSize: 22, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(color: muted, height: 1.5)),
+            const SizedBox(height: 20),
+            FilledButton(onPressed: onPressed, child: Text(buttonLabel)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AlienCard extends StatelessWidget {
+  final AlienProfile alien;
+  const _AlienCard({required this.alien});
+
+  @override
+  Widget build(BuildContext context) {
+    final details = [alien.species, alien.homePlanet].whereType<String>().where((s) => s.trim().isNotEmpty).toList();
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: const Color(0xFF17151E),
+        borderRadius: BorderRadius.circular(30),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 6,
+            child: SizedBox(
+              width: double.infinity,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _AlienAvatar(alien: alien, width: double.infinity, height: double.infinity, cover: true),
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    child: ImageBadge(icon: Icons.auto_awesome, text: alien.species?.isNotEmpty == true ? alien.species! : 'ALIEN'),
+                  ),
+                  if (alien.homePlanet?.isNotEmpty == true)
+                    Positioned(top: 16, right: 16, child: ImageBadge(icon: Icons.public, text: alien.homePlanet!)),
+                  const Positioned(
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    height: 90,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0x99000000)]),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 5,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(alien.age == null ? alien.name : '${alien.name}, ${alien.age}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 29, fontWeight: FontWeight.w700, letterSpacing: -0.7)),
+                  if (details.isNotEmpty) ...[
+                    const SizedBox(height: 5),
+                    Text(details.join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFD5CFE7), fontSize: 12, fontWeight: FontWeight.w600)),
+                  ],
+                  const SizedBox(height: 9),
+                  Expanded(child: Text(alien.bio.isEmpty ? 'This cosmic profile is still a mystery.' : alien.bio, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.45))),
+                  const SizedBox(height: 8),
+                  const Row(children: [Icon(Icons.swipe, color: Colors.white60, size: 16), SizedBox(width: 6), Text('Swipe to decide their fate', style: TextStyle(color: Colors.white60, fontSize: 11))]),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AlienAvatar extends StatelessWidget {
+  final AlienProfile alien;
+  final double width;
+  final double height;
+  final bool cover;
+  const _AlienAvatar({required this.alien, required this.width, required this.height, this.cover = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = alien.photoUrl;
+    if (url != null && url.trim().isNotEmpty) {
+      return Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: cover ? BoxFit.cover : BoxFit.cover,
+        errorBuilder: (_, __, ___) => _placeholder(),
+      );
+    }
+    return _placeholder();
+  }
+
+  Widget _placeholder() => Container(
+        width: width,
+        height: height,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF55476F), Color(0xFF24202F), Color(0xFF7E6B94)]),
+        ),
+        child: Center(
+          child: Icon(Icons.face_6_outlined, size: cover ? 110 : 36, color: Colors.white70),
+        ),
+      );
 }
 
 // ─── EMPTY STATE ─────────────────────────────────────────────────

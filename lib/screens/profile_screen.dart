@@ -7,7 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/human_profile.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final ValueChanged<HumanProfile> onComplete;
+  final Future<void> Function(HumanProfile profile, XFile? newPhoto) onComplete;
   final HumanProfile? initialProfile;
 
   const ProfileScreen({
@@ -175,7 +175,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _submitting = true);
@@ -184,8 +184,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       name: _nameController.text.trim(),
       age: int.parse(_ageController.text.trim()),
       bio: _bioController.text.trim(),
-      photoPath: _photo?.path ??
-          widget.initialProfile?.photoPath,
+      photoUrl: widget.initialProfile?.photoUrl,
       breathingGas: _breathingGas,
       minPressure: _minPressure,
       maxPressure: _maxPressure,
@@ -198,12 +197,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       preferredClimate: _climate,
     );
 
-    widget.onComplete(profile);
+    try {
+      await widget.onComplete(profile, _photo);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile saved to your account.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save profile: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final existingPhoto = widget.initialProfile?.photoPath;
+    final existingPhoto = widget.initialProfile?.photoUrl;
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAF8),
@@ -433,7 +447,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(height: 14),
               const Text(
-                'Your profile is stored locally for this prototype.',
+                'Your profile and photo are saved to your account.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _muted, fontSize: 11),
               ),
@@ -450,6 +464,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     if (existingPhoto != null && existingPhoto.isNotEmpty) {
+      if (existingPhoto.startsWith('http://') || existingPhoto.startsWith('https://')) {
+        return Image.network(
+          existingPhoto,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _photoPlaceholder(),
+        );
+      }
       return Image.file(
         File(existingPhoto),
         fit: BoxFit.cover,

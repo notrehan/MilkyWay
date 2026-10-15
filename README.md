@@ -3,24 +3,8 @@
 
 ## Explore new worlds, meet cosmic matches, and discover where you belong.
 
-### Team Name: [Your Team Name]
-
-### Team Members
-- Member 1: [Your Name] - [Your Institution]
-- Member 2: [Member Name] - [Institution]
-
-### Hosted Project Link
-[Add hosted project link, if available]
-
 ### Project Description
 MilkyWay is an intergalactic discovery and dating app built using Flutter and Supabase. Users can explore fictional planets, discover alien profiles, and create their own human profile with personal details and survival preferences. The app combines a playful space theme with swipe-based discovery and a clean, minimal interface.
-
-### The Problem statement
-Traditional dating and discovery apps focus on connections within our own world. There is no fun, interactive way to imagine exploring other planets and meeting life forms from across the galaxy.
-
-### The Solution
-MilkyWay offers a unique intergalactic experience where users can explore planets, discover alien profiles, and create their own profiles. With swipe-based interactions and a Supabase backend, the app brings planetary exploration and cosmic matchmaking together.
-
 ---
 
 ## Technical Details

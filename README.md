@@ -52,24 +52,6 @@ MilkyWay offers a unique intergalactic experience where users can explore planet
 
 ## Project Documentation
 
-### For Software:
-
-#### Screenshots (Add at least 3)
-
-Add screenshots of the running application to your repository.
-
-**1. Home Screen**
-
-<img src="./screenshots/home.png" alt="MilkyWay Home Screen" width="300">
-
-**2. Planet Discovery Screen**
-
-<img src="./screenshots/planets.png" alt="MilkyWay Planet Discovery" width="300">
-
-**3. Alien Discovery Screen**
-
-<img src="./screenshots/aliens.png" alt="MilkyWay Alien Discovery" width="300">
-
 #### Architecture Diagram
 
 ```text

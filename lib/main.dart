@@ -1,7 +1,32 @@
 
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() => runApp(const AfterNetApp());
+import 'auth_screen.dart';
+import 'models/human_profile.dart';
+import 'screens/profile_screen.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env');
+
+  final supabaseUrl = dotenv.env['SUPABASE_URL']?.trim() ?? '';
+  final supabaseKey = dotenv.env['SUPABASE_PUBLISHABLE_KEY']?.trim() ?? '';
+  if (supabaseUrl.isEmpty || supabaseKey.isEmpty ||
+      supabaseUrl.contains('YOUR_PROJECT_REF') ||
+      supabaseKey.contains('YOUR_SUPABASE_')) {
+    throw StateError(
+      'Configure SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in the .env file.',
+    );
+  }
+
+  await Supabase.initialize(
+    url: supabaseUrl,
+    anonKey: supabaseKey,
+  );
+  runApp(const AfterNetApp());
+}
 
 // ─── THEME ───────────────────────────────────────────────────────
 
@@ -18,7 +43,7 @@ class AfterNetApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'AFTERNET',
+      title: 'MilkyWay',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -44,7 +69,23 @@ class AfterNetApp extends StatelessWidget {
           }),
         ),
       ),
-      home: const MainShell(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) return const MainShell();
+        return const AuthScreen();
+      },
     );
   }
 }
@@ -189,30 +230,43 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int index = 0;
-  String? humanName;
+  HumanProfile? humanProfile;
+
+  void openProfile() {
+    setState(() => index = 3);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final pages = [
-      HomeScreen(onNavigate: (i) => setState(() => index = i)),
-      const PlanetScreen(),
-      humanName == null
-          ? RegistrationScreen(
-              onRegister: (name) {
-                setState(() {
-                  humanName = name;
-                  index = 2;
-                });
-              },
-            )
-          : AlienScreen(humanName: humanName!),
-    ];
-
     return Scaffold(
-      body: IndexedStack(index: index, children: pages),
+      body: IndexedStack(
+        index: index,
+        children: [
+          HomeScreen(
+            onNavigate: (i) => setState(() => index = i),
+          ),
+          const PlanetScreen(),
+          AlienScreen(
+            profile: humanProfile,
+            onCreateProfile: openProfile,
+          ),
+          ProfileScreen(
+            key: ValueKey(humanProfile?.name ?? 'new-profile'),
+            initialProfile: humanProfile,
+            onComplete: (profile) {
+              setState(() {
+                humanProfile = profile;
+                index = 2;
+              });
+            },
+          ),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
-        onDestinationSelected: (i) => setState(() => index = i),
+        onDestinationSelected: (i) {
+          setState(() => index = i);
+        },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -228,6 +282,11 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.favorite_border),
             selectedIcon: Icon(Icons.favorite),
             label: 'Aliens',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
           ),
         ],
       ),
@@ -264,7 +323,7 @@ class HomeScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'AFTERNET',
+                    'MILKYWAY',
                     style: TextStyle(
                       color: ink,
                       fontWeight: FontWeight.w800,
@@ -281,6 +340,22 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Log out',
+                onPressed: () async {
+                  try {
+                    await Supabase.instance.client.auth.signOut();
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Could not log out. Try again.')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.logout_rounded, color: muted),
               ),
             ],
           ),
@@ -318,6 +393,15 @@ class HomeScreen extends StatelessWidget {
             icon: Icons.favorite_outline,
             colors: const [Color(0xFFEAE8F0), Color(0xFFDFDCE9)],
             onTap: () => onNavigate(2),
+          ),
+          const SizedBox(height: 16),
+          FeatureCard(
+            title: 'Build your profile',
+            subtitle: 'Tell the galaxy what keeps you alive.',
+            action: 'MY PROFILE',
+            icon: Icons.person_outline,
+            colors: const [Color(0xFFF0E8DB), Color(0xFFE7DDCD)],
+            onTap: () => onNavigate(3),
           ),
           const SizedBox(height: 24),
           Container(
@@ -458,7 +542,7 @@ class FeatureCard extends StatelessWidget {
   }
 }
 
-// ─── EXPLORE / MATCHES TABS ──────────────────────────────────────
+// ─── SHARED EXPLORE / MATCHES TABS ───────────────────────────────
 
 class SectionTabs extends StatelessWidget {
   final int selectedIndex;
@@ -544,8 +628,7 @@ class _Tab extends StatelessWidget {
   }
 }
 
-// ─── PLANETS SCREEN ──────────────────────────────────────────────
-
+// ─── PLANETS SCREEN WITH SWIPE ANIMATION ─────────────────────────
 
 class PlanetScreen extends StatefulWidget {
   const PlanetScreen({super.key});
@@ -581,9 +664,7 @@ class _PlanetScreenState extends State<PlanetScreen>
       duration: const Duration(milliseconds: 300),
     )..addListener(() {
         if (_animation != null) {
-          setState(() {
-            dragOffset = _animation!.value;
-          });
+          setState(() => dragOffset = _animation!.value);
         }
       });
 
@@ -607,10 +688,7 @@ class _PlanetScreenState extends State<PlanetScreen>
     super.dispose();
   }
 
-  void _animateTo(
-    Offset destination, {
-    required bool dismiss,
-  }) {
+  void _animateTo(Offset destination, {required bool dismiss}) {
     if (isAnimatingOut || currentIndex >= planets.length) return;
 
     _controller.stop();
@@ -663,29 +741,22 @@ class _PlanetScreenState extends State<PlanetScreen>
   }
 
   void _swipe(bool like) {
-    if (isAnimatingOut ||
-        isReturning ||
+    if (isAnimatingOut || isReturning ||
         currentIndex >= planets.length) {
       return;
     }
 
-    final size = MediaQuery.sizeOf(context);
+    final width = MediaQuery.sizeOf(context).width;
 
     _animateTo(
-      Offset(
-        like ? size.width * 1.4 : -size.width * 1.4,
-        40,
-      ),
+      Offset(like ? width * 1.4 : -width * 1.4, 40),
       dismiss: true,
     );
   }
 
   void _onDragUpdate(DragUpdateDetails details) {
     if (isAnimatingOut || isReturning) return;
-
-    setState(() {
-      dragOffset += details.delta;
-    });
+    setState(() => dragOffset += details.delta);
   }
 
   void _onDragEnd(DragEndDetails details) {
@@ -699,8 +770,7 @@ class _PlanetScreenState extends State<PlanetScreen>
         Offset(width * 1.4, dragOffset.dy + 50),
         dismiss: true,
       );
-    } else if (dragOffset.dx < -width * 0.25 ||
-        velocity < -850) {
+    } else if (dragOffset.dx < -width * 0.25 || velocity < -850) {
       _animateTo(
         Offset(-width * 1.4, dragOffset.dy + 50),
         dismiss: true,
@@ -731,9 +801,7 @@ class _PlanetScreenState extends State<PlanetScreen>
       backgroundColor: Colors.white,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (context) => SafeArea(
         child: SingleChildScrollView(
@@ -764,10 +832,7 @@ class _PlanetScreenState extends State<PlanetScreen>
               const SizedBox(height: 12),
               Text(
                 p.description,
-                style: const TextStyle(
-                  color: muted,
-                  height: 1.5,
-                ),
+                style: const TextStyle(color: muted, height: 1.5),
               ),
               const SizedBox(height: 22),
               const Text(
@@ -779,12 +844,10 @@ class _PlanetScreenState extends State<PlanetScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              ...p.pros.map(
-                (s) => DetailRow(
-                  icon: Icons.check_circle_outline,
-                  text: s,
-                ),
-              ),
+              ...p.pros.map((s) => DetailRow(
+                    icon: Icons.check_circle_outline,
+                    text: s,
+                  )),
               const SizedBox(height: 18),
               const Text(
                 'THE RED FLAGS',
@@ -795,22 +858,17 @@ class _PlanetScreenState extends State<PlanetScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              ...p.cons.map(
-                (s) => DetailRow(
-                  icon: Icons.flag_outlined,
-                  text: s,
-                ),
-              ),
+              ...p.cons.map((s) => DetailRow(
+                    icon: Icons.flag_outlined,
+                    text: s,
+                  )),
               const SizedBox(height: 22),
               Text(
                 'Atmosphere: ${p.atmosphere}\n'
                 'Climate: ${p.climate}\n'
                 'Gravity: ${p.gravity}g\n'
                 'Demo habitability: ${p.habitability.toInt()}%',
-                style: const TextStyle(
-                  color: ink,
-                  height: 1.8,
-                ),
+                style: const TextStyle(color: ink, height: 1.8),
               ),
             ],
           ),
@@ -833,8 +891,8 @@ class _PlanetScreenState extends State<PlanetScreen>
             (MediaQuery.sizeOf(context).width * 1.5))
         .clamp(-0.18, 0.18);
 
-    final opacity = (dragOffset.dx.abs() / 100)
-        .clamp(0.0, 1.0);
+    final opacity =
+        (dragOffset.dx.abs() / 100).clamp(0.0, 1.0);
 
     return SafeArea(
       child: Column(
@@ -863,10 +921,7 @@ class _PlanetScreenState extends State<PlanetScreen>
           ),
           Expanded(
             child: tab == 1
-                ? MatchesView(
-                    planets: matches,
-                    onTap: details,
-                  )
+                ? MatchesView(planets: matches, onTap: details)
                 : current == null
                     ? FinishedView(onReset: reset)
                     : Padding(
@@ -883,14 +938,11 @@ class _PlanetScreenState extends State<PlanetScreen>
                                       child: Transform.scale(
                                         scale: 0.95,
                                         child: PlanetCard(
-                                          key: ValueKey(
-                                            'next-${next.id}',
-                                          ),
+                                          key: ValueKey('next-${next.id}'),
                                           planet: next,
                                         ),
                                       ),
                                     ),
-
                                   Positioned.fill(
                                     child: GestureDetector(
                                       onPanUpdate: _onDragUpdate,
@@ -907,8 +959,6 @@ class _PlanetScreenState extends State<PlanetScreen>
                                       ),
                                     ),
                                   ),
-
-                                  // LIKE / NOPE indicators.
                                   Positioned(
                                     top: 28,
                                     left: 22,
@@ -919,11 +969,9 @@ class _PlanetScreenState extends State<PlanetScreen>
                                             : 0,
                                         child: Transform.rotate(
                                           angle: -0.15,
-                                          child: _SwipeStamp(
+                                          child: const _SwipeStamp(
                                             label: 'LIKE',
-                                            color: const Color(
-                                              0xFF548A70,
-                                            ),
+                                            color: Color(0xFF548A70),
                                           ),
                                         ),
                                       ),
@@ -939,11 +987,9 @@ class _PlanetScreenState extends State<PlanetScreen>
                                             : 0,
                                         child: Transform.rotate(
                                           angle: 0.15,
-                                          child: _SwipeStamp(
+                                          child: const _SwipeStamp(
                                             label: 'NOPE',
-                                            color: const Color(
-                                              0xFFC45F65,
-                                            ),
+                                            color: Color(0xFFC45F65),
                                           ),
                                         ),
                                       ),
@@ -954,8 +1000,7 @@ class _PlanetScreenState extends State<PlanetScreen>
                             ),
                             const SizedBox(height: 14),
                             Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceEvenly,
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                               children: [
                                 ActionButton(
                                   icon: Icons.close,
@@ -996,10 +1041,7 @@ class _SwipeStamp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 7,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         border: Border.all(color: color, width: 3),
         borderRadius: BorderRadius.circular(8),
@@ -1016,7 +1058,6 @@ class _SwipeStamp extends StatelessWidget {
     );
   }
 }
-
 
 class PlanetCard extends StatelessWidget {
   final Planet planet;
@@ -1285,7 +1326,8 @@ class MatchesView extends StatelessWidget {
       return const EmptyState(
         icon: Icons.public,
         title: 'No planets liked yet',
-        subtitle: 'Explore the galaxy and find a world that feels like home.',
+        subtitle:
+            'Explore the galaxy and find a world that feels like home.',
       );
     }
 
@@ -1378,116 +1420,17 @@ class FinishedView extends StatelessWidget {
   }
 }
 
-// ─── ALIEN REGISTRATION ──────────────────────────────────────────
-
-class RegistrationScreen extends StatefulWidget {
-  final ValueChanged<String> onRegister;
-
-  const RegistrationScreen({
-    super.key,
-    required this.onRegister,
-  });
-
-  @override
-  State<RegistrationScreen> createState() => _RegistrationScreenState();
-}
-
-class _RegistrationScreenState extends State<RegistrationScreen> {
-  final controller = TextEditingController();
-
-  @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Spacer(),
-            const Center(
-              child: Icon(Icons.fingerprint, size: 72, color: accent),
-            ),
-            const SizedBox(height: 28),
-            const Text(
-              'Before you meet the aliens...',
-              style: TextStyle(
-                color: ink,
-                fontSize: 29,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.7,
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Every civilization deserves to know who just '
-              'entered its dating pool. Create your human profile '
-              'to continue.',
-              style: TextStyle(color: muted, fontSize: 15, height: 1.6),
-            ),
-            const SizedBox(height: 28),
-            TextField(
-              controller: controller,
-              textCapitalization: TextCapitalization.words,
-              style: const TextStyle(color: ink),
-              decoration: InputDecoration(
-                hintText: 'Your intergalactic name',
-                hintStyle: const TextStyle(color: muted),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.all(18),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: accent),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: ink,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                ),
-                onPressed: () {
-                  final name = controller.text.trim();
-                  if (name.isNotEmpty) widget.onRegister(name);
-                },
-                child: const Text('Create human profile'),
-              ),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── ALIENS PLACEHOLDER ──────────────────────────────────────────
+// ─── ALIENS SCREEN: PROFILE REQUIRED ─────────────────────────────
 
 class AlienScreen extends StatefulWidget {
-  final String humanName;
+  final HumanProfile? profile;
+  final VoidCallback onCreateProfile;
 
-  const AlienScreen({super.key, required this.humanName});
+  const AlienScreen({
+    super.key,
+    required this.profile,
+    required this.onCreateProfile,
+  });
 
   @override
   State<AlienScreen> createState() => _AlienScreenState();
@@ -1498,6 +1441,8 @@ class _AlienScreenState extends State<AlienScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final hasProfile = widget.profile != null;
+
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1518,7 +1463,9 @@ class _AlienScreenState extends State<AlienScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Welcome to the dating pool, ${widget.humanName}.',
+                  hasProfile
+                      ? 'Welcome back, ${widget.profile!.name}.'
+                      : 'Meet someone from another world.',
                   style: const TextStyle(color: muted, fontSize: 13),
                 ),
                 const SizedBox(height: 20),
@@ -1530,25 +1477,135 @@ class _AlienScreenState extends State<AlienScreen> {
             ),
           ),
           Expanded(
-            child: EmptyState(
-              icon: tab == 0
-                  ? Icons.face_6_outlined
-                  : Icons.favorite_border,
-              title: tab == 0
-                  ? 'Your next cosmic crush awaits.'
-                  : 'Your matches will appear here.',
-              subtitle: tab == 0
-                  ? 'Alien profiles are coming next. '
-                      'Prepare for questionable life choices.'
-                  : 'Swipe right on someone from another '
-                      'world to start your story.',
-            ),
+            child: !hasProfile
+                ? _buildProfilePrompt()
+                : _buildAlienContent(),
           ),
         ],
       ),
     );
   }
+
+  Widget _buildProfilePrompt() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAE6F0),
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: const Icon(
+                Icons.face_6_outlined,
+                color: accent,
+                size: 52,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'First, introduce yourself.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: ink,
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Create your human profile and tell us what you '
+              'need to survive on another planet before meeting '
+              'the local dating population.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: muted,
+                fontSize: 14,
+                height: 1.6,
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: FilledButton.icon(
+                onPressed: widget.onCreateProfile,
+                icon: const Icon(Icons.person_add_outlined),
+                label: const Text('Create my profile'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: ink,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlienContent() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              tab == 0
+                  ? Icons.travel_explore
+                  : Icons.favorite_border,
+              color: accent,
+              size: 60,
+            ),
+            const SizedBox(height: 18),
+            Text(
+              tab == 0
+                  ? 'Your cosmic crush awaits.'
+                  : 'Your matches will appear here.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: ink,
+                fontSize: 22,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              tab == 0
+                  ? 'Welcome, ${widget.profile!.name}. '
+                      'Alien profiles and compatibility matching '
+                      'are the next step.'
+                  : 'When you like an alien and they like you back, '
+                      'your match will appear here.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: muted,
+                height: 1.5,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: widget.onCreateProfile,
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('Edit my profile'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+// ─── EMPTY STATE ─────────────────────────────────────────────────
 
 class EmptyState extends StatelessWidget {
   final IconData icon;
